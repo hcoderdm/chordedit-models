@@ -1,11 +1,12 @@
 # settings.py
 
 import os as _os
+from functools import partial
 from pathlib import Path
 
 from dotenv import load_dotenv as _load_dotenv
 
-from scores import compute_weighted_combined_score
+from scores import weighted_combined_score
 
 # Machine-specific paths live in .env beside this file.
 _load_dotenv(Path(__file__).resolve().parent / ".env")
@@ -17,7 +18,7 @@ Dataset settings.
 """
 
 # NOTE: Set this to the directory containing the generated metrics and inputs CSV files.
-DIR_NAME = "UltraEdit_Region_10000"
+DIR_NAME = "UltraEdit_Region_1000"
 GENERATED_DIR = Path(f"{_DATA_ROOT}/generated/ultra_edit/{DIR_NAME}")
 DATASET_DIR = Path(f"{_DATA_ROOT}/datasets/ultra_edit/{DIR_NAME}")
 # Precomputed embeddings (used when FREEZE_ENCODERS is True). 
@@ -129,7 +130,8 @@ T model settings.
 """
 
 # Scalar objective for timestep selection and M ranking loss.
-T_TARGET_FUNC = lambda df: compute_weighted_combined_score(df, PSNR_COL, CLIP_COL)
+# Bind hyperparameters with partial, e.g. partial(softplus_score, alpha=1.0, beta=2.0).
+T_TARGET_SCORE = partial(weighted_combined_score, weights=None, normalize=True)
 T_TARGET_COL = "combined_score"
 T_TARGET_LABEL = "Combined Score"
 
