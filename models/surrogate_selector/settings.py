@@ -16,28 +16,45 @@ _DATA_ROOT = _os.environ["CHORDEDIT_DATA_ROOT"]
 Dataset settings.
 """
 
-# NOTE: Set this to the directory containing the generated metrics and strings CSV files.
+# NOTE: Set this to the directory containing the generated metrics and inputs CSV files.
 DIR_NAME = "UltraEdit_Region_10000"
 GENERATED_DIR = Path(f"{_DATA_ROOT}/generated/ultra_edit/{DIR_NAME}")
 DATASET_DIR = Path(f"{_DATA_ROOT}/datasets/ultra_edit/{DIR_NAME}")
+# Precomputed embeddings (used when FREEZE_ENCODERS is True). 
+# Set to None for on-the-fly encode. Will pack into cache dir.
+EMBEDDINGS_DIR = Path(f"{_DATA_ROOT}/embeddings/ultraedit/{DIR_NAME}")
+EMBEDDINGS_SAMPLES_DIRNAME = "annotation_embeddings"
 
 INPUTS_CSV = GENERATED_DIR / f"id_to_inputs_{DIR_NAME.replace('_', '').lower()}.csv"
 METRICS_CSV = GENERATED_DIR / f"id_to_metrics_{DIR_NAME.replace('_', '').lower()}.csv"
+EMBEDDINGS_CSV = EMBEDDINGS_DIR / f"id_to_embeddings_{DIR_NAME.replace('_', '').lower()}.csv"
 
 # NOTE: Set this to the directory where the model outputs will be saved.
 OUTPUTS_DIR = Path(__file__).resolve().parent / "outputs" / DIR_NAME
-if not OUTPUTS_DIR.exists():
-    OUTPUTS_DIR.mkdir(parents=True)
+OUTPUTS_DIR.mkdir(parents=True, exist_ok=True)
+_outputs_gitignore = OUTPUTS_DIR.parent / ".gitignore"
+if not _outputs_gitignore.exists():
+    _outputs_gitignore.write_text("*\n!.gitignore\n", encoding="utf-8")
+
+# Training-ready pooled/flattened embedding tables (built on first load from annotation_embeddings/).
+M_EMBEDDINGS_PATH = OUTPUTS_DIR.parent / ".cache" / "embeddings" / f"m_{DIR_NAME.replace('_', '').lower()}.pt"
+
+# Shared column name for sample IDs.
+SAMPLE_ID_COL = "sample_id"
 
 # Column names in the id_to_inputs_*.csv file.
-SAMPLE_ID_COL = "sample_id"
 SOURCE_PROMPT_COL = "source_prompt"
 TARGET_PROMPT_COL = "target_prompt"
 IMAGE_PATH_COL = "image_path"
 MASK_PATH_COL = "mask_image_path"
 
+# Column names in the id_to_embeddings_*.csv file.
+SOURCE_EMB_COL = "source_embedding"
+TARGET_EMB_COL = "target_embedding"
+IMAGE_EMB_COL = "image_embedding"
+MASK_EMB_COL = "mask_embedding"
+
 # Column names in the id_to_metrics_*.csv file.
-SAMPLE_ID_COL = "sample_id"
 CATEGORY_COL = "category"
 T_START_COL = "t_start"
 T_END_COL = "t_end"
@@ -72,9 +89,11 @@ M model settings.
 
 # Regression targets in the loaded dataframe (after PSNR_COL/CLIP_COL rename).
 M_TARGET_COLS = (PSNR_COL, CLIP_COL)
-M_TARGET_LABELS = {PSNR_COL: "Whole PSNR", CLIP_COL: "CLIP-Edited"}
+M_TARGET_LABELS = {PSNR_COL: "PSNR-Unedited", CLIP_COL: "CLIP-Edited"}
 
 # ChordEdit encoders loaded from SD-TURBO_ROOT for image/text embedding.
+# When FREEZE_ENCODERS is True and EMBEDDINGS_CSV is set, embeddings are loaded from disk.
+# Set FREEZE_ENCODERS=False or EMBEDDINGS_CSV=None to encode on the fly instead.
 SD_TURBO_ROOT = Path(f"{_DATA_ROOT}/models/sd-turbo")
 IMAGE_SIZE = 512
 USE_CENTER_CROP = True
@@ -94,6 +113,8 @@ T_PROJ_DIM = 128
 # M training hyperparameters.
 EPOCHS = 10
 BATCH_SIZE = 64
+# chunk size for batched VAE/text embedding precompute (peak VRAM vs throughput).
+EMBED_BATCH_SIZE = 16
 LR = 1e-3
 WEIGHT_DECAY = 0.05
 NORMALIZE_TARGETS = True
