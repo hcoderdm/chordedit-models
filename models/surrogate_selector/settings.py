@@ -6,7 +6,7 @@ from pathlib import Path
 
 from dotenv import load_dotenv as _load_dotenv
 
-from scores import weighted_combined_score
+from scores import linex_score, score_df
 
 # Machine-specific paths live in .env beside this file.
 _load_dotenv(Path(__file__).resolve().parent / ".env")
@@ -18,7 +18,8 @@ Dataset settings.
 """
 
 # NOTE: Set this to the directory containing the generated metrics and inputs CSV files.
-DIR_NAME = "UltraEdit_Region_1000"
+DIR_NAME_DEFAULT = "UltraEdit_Region_10"
+DIR_NAME = input(f"Dataset directory [{DIR_NAME_DEFAULT}]: ") or DIR_NAME_DEFAULT
 GENERATED_DIR = Path(f"{_DATA_ROOT}/generated/ultra_edit/{DIR_NAME}")
 DATASET_DIR = Path(f"{_DATA_ROOT}/datasets/ultra_edit/{DIR_NAME}")
 # Precomputed embeddings (used when FREEZE_ENCODERS is True). 
@@ -134,10 +135,12 @@ T model settings.
 """
 
 # Scalar objective for timestep selection and M ranking loss.
-# Bind hyperparameters with partial, e.g. partial(softplus_score, alpha=1.0, beta=2.0).
-T_TARGET_SCORE = partial(weighted_combined_score, weights=None, normalize=True)
-T_TARGET_COL = "combined_score"
-T_TARGET_LABEL = "Combined Score"
+# T_TARGET_SCORE takes per-sample normalized deltas Δ; see scores.normalized_score_deltas.
+_T_SCORE_KW = dict(alpha=2.0)
+T_TARGET_SCORE = partial(linex_score, **_T_SCORE_KW)  # Torch phi(Δ)
+T_TARGET_SCORE_DF = partial(score_df, score_fn=linex_score, **_T_SCORE_KW)  # DataFrame
+T_TARGET_COL = "linex_score"
+T_TARGET_LABEL = "LINEX Score"
 
 # Baseline timestep bounds from the original ChordEdit paper (used in eval).
 DEFAULT_T_START = 0.9
