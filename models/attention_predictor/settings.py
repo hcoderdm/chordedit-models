@@ -22,6 +22,7 @@ _DATA_ROOT = _os.environ["CHORDEDIT_DATA_ROOT"]
 
 _SETTINGS_DIR = Path(__file__).resolve().parent
 _SETTINGS_ARG = "--settings-path"
+_PIE_BENCH_ARG = "--pie-bench"
 
 
 def _settings_path_from_argv() -> str | None:
@@ -35,6 +36,11 @@ def _settings_path_from_argv() -> str | None:
         if arg.startswith(f"{_SETTINGS_ARG}="):
             return arg.split("=", 1)[1]
     return None
+
+
+def _pie_bench_from_argv() -> bool:
+    """True when --pie-bench is on the command line."""
+    return _PIE_BENCH_ARG in _sys.argv[1:]
 
 # _helpers.load_run_settings sets SETTINGS_PATH_OVERRIDE on this module before
 # executing it, so replaying a run's snapshot never depends on the argv of
@@ -80,6 +86,18 @@ DIR_NAME = str(_cfg("DIR_NAME"))
 GENERATED_DIR = Path(f"{_DATA_ROOT}/generated/{CHORD_EDIT_MODEL}/0p0/{DIR_NAME}")
 DATASET_DIR = Path(f"{_DATA_ROOT}/datasets/ultra_edit/{DIR_NAME}")
 SCATTERED_DIR = Path(f"{_DATA_ROOT}/embeddings/{CHORD_EDIT_MODEL}/{DIR_NAME}")
+
+# --pie-bench (argv) or a saved run snapshot's PIE_BENCH: replace the UltraEdit
+# test split with labeled PIE-Bench samples. Persist into CONFIG so save_run_settings
+# writes it and selector / load_split_df can replay the same test source.
+PIE_BENCH = bool(_pie_bench_from_argv() or _cfg("PIE_BENCH", False))
+CONFIG["PIE_BENCH"] = PIE_BENCH
+PIE_BENCH_DIR_NAME = "PIE_Bench_v1"
+PIE_SAMPLE_ID_PREFIX = "pie_"
+PIE_GENERATED_DIR = Path(f"{_DATA_ROOT}/generated/{CHORD_EDIT_MODEL}/0p0/{PIE_BENCH_DIR_NAME}")
+PIE_SCATTERED_DIR = Path(f"{_DATA_ROOT}/embeddings/{CHORD_EDIT_MODEL}/{PIE_BENCH_DIR_NAME}")
+PIE_INPUTS_CSV = PIE_GENERATED_DIR / "id_to_inputs_piebenchv1.csv"
+PIE_METRICS_CSV = PIE_GENERATED_DIR / "id_to_metrics_piebenchv1.csv"
 
 # Map the package root from next to model.py or the copy saved under runs/.
 _here = Path(__file__).resolve().parent
