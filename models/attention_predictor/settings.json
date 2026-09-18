@@ -6,8 +6,8 @@
   "VAL_FRAC": 0.1,
   "SEED": 42,
   "SPLIT_SEED": 42,
-  "LABEL_SEEDS": null,
-  "EVAL_LABEL_SEEDS": null,
+  "TRAIN_METRICS_SEEDS": [42, 43, 44, 45],
+  "EVAL_METRICS_SEEDS": [42, 43, 44, 45],
   "MAX_SAMPLES": null,
   "PIE_BENCH": false,
 
