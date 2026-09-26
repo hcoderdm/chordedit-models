@@ -10,10 +10,10 @@ Builds on [ChordEdit](https://chordedit.github.io) ([paper](https://arxiv.org/pd
 | --- | --- |
 | [`models/attention_predictor/`](models/attention_predictor) | Cross-attention regressor: image (and optional masked-image) tokens are grounded against prompt tokens to predict the whole grid surface. |
 | [`models/mlp_predictor/`](models/mlp_predictor) | Pooled-feature MLP surrogate with one tower per metric. See its [README](models/mlp_predictor/README.md). |
-| [`models/modified-classification/`](models/modified-classification) | Earlier M + T surrogate (metric surrogate plus timestep selector). `mlp_predictor` started as a copy of this code. |
-| [`models/classification/`](models/classification) | Original classifier over grid cells, with CORAL, CE, and MSE heads. `modified-classification` forked from it. |
+| [`models/surrogate_selector/`](models/surrogate_selector) | Earlier M + T surrogate (metric surrogate plus timestep selector). `mlp_predictor` started as a copy of this code. |
+| [`models/cell_classifier/`](models/cell_classifier) | Original classifier over grid cells, with CORAL, CE, and MSE heads. `surrogate_selector` forked from it. |
 
-The last two are earlier models, imported with their full commit history from the `daniel/classification-model` and `daniel/modified-classification-model` branches of MinghanLi/ChordEdit.
+The last two are earlier models, imported with their full commit history from the `daniel/classification-model` and `daniel/modified-classification-model` branches of MinghanLi/ChordEdit, where they lived at `models/classification` and `models/modified-classification`.
 
 The two current models share the same structure: `settings.json` (every tunable), `settings.py` (derived paths and constants), `train.py`, `selector.py`, `metrics.py`, `scores.py`, and `embeddings.py`.
 

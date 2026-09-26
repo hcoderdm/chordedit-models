@@ -77,7 +77,7 @@ flowchart TB
 
 ```bash
 conda activate chordedit
-cd models/modified-classification
+cd models/surrogate_selector
 ```
 
 Requires ChordEdit weights at `CHORD_EDIT_MODEL_ROOT` for the selected `CHORD_EDIT_MODEL` (see `settings.py`).
