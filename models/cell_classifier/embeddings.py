@@ -1,0 +1,252 @@
+# embeddings.py
+
+"""Load embeddings from scattered files or packed tables."""
+
+from __future__ import annotations
+
+import os
+import sys
+from concurrent.futures import ThreadPoolExecutor
+from pathlib import Path
+
+import pandas as pd
+import torch
+from tqdm import tqdm
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
+from settings import *
+
+_PACKED_EMBEDDINGS_DIR = Path(__file__).resolve().parent / ".cache" / "packed_embeddings"
+_SCATTERED_EMBEDDINGS_DIR = Path(f"{os.environ['CHORDEDIT_DATA_ROOT']}/embeddings/{CHORD_EDIT_MODEL}/{DIR_NAME}/annotation_embeddings/")
+
+
+def _prep_sample_id(value) -> str:
+    return f"{int(value):08d}"
+
+
+def _prep_embedding_path(embedding_path: str) -> str:
+    path = Path(embedding_path)
+    if path.is_absolute():
+        return str(path)
+    path = Path(str(embedding_path).lstrip("/"))
+    if path.parts and path.parts[0] == EMBEDDINGS_SAMPLES_DIRNAME:
+        path = path.relative_to(EMBEDDINGS_SAMPLES_DIRNAME)
+    return str(_SCATTERED_EMBEDDINGS_DIR / path)
+
+
+def _text_dim(probe: torch.Tensor, path) -> int:
+    """Validate a stored packing-ready text vector and return its dim.
+
+    Scattered files store one pre-pooled float32 vector per prompt (written by
+    the annotation pipeline from the same tensors that condition generation),
+    so packing never needs prompts, tokenizers, or pooling.
+    """
+    if probe.numel() != probe.shape[-1]:
+        raise ValueError(
+            f"Expected a pooled text vector (D,) or (1, D), got {tuple(probe.shape)} in {path}. "
+            f"Re-run the annotation pipeline to produce packing-ready embeddings."
+        )
+    return int(probe.shape[-1])
+
+
+"""
+Packed/scattered caches.
+"""
+
+def _get_packed_path() -> Path:
+    """Packed cache path for the current settings."""
+    t_delta = f"{TARGET_T_DELTA}".replace(".", "p")
+    slug = DIR_NAME.replace("_", "").lower()
+    return _PACKED_EMBEDDINGS_DIR / f"{CHORD_EDIT_MODEL}-{t_delta}-{slug}.pt"
+
+
+def _expected_packed_meta() -> dict:
+    """Meta that a valid packed cache must carry (primitives only: survives weights_only).
+
+    "layout" identifies the packing-ready schema (img/src/tar tables, no mask);
+    caches from the legacy sequence+mask format lack it and repack automatically.
+    """
+    return {
+        "model": CHORD_EDIT_MODEL,
+        "pipeline_type": CHORD_EDIT_PIPELINE_TYPE,
+        "layout": "img_src_tar_v2",
+        "image_size": int(CHORD_EDIT_IMAGE_SIZE),
+        "dir_name": DIR_NAME,
+        "target_t_delta": TARGET_T_DELTA,
+    }
+
+
+def _load_pt(path: str) -> torch.Tensor:
+    """Load one scattered embedding .pt file to a float32 CPU tensor."""
+    t = torch.load(path, map_location="cpu", weights_only=True)
+    if not isinstance(t, torch.Tensor):
+        raise TypeError(f"Expected Tensor in {path}, got {type(t)}")
+    return t.detach().float()
+
+
+def _load_packed_cache(
+    packed_path: Path,
+    sample_ids: list[str],
+) -> tuple[list[str], torch.Tensor, torch.Tensor, torch.Tensor] | None:
+    """Packed tables sliced to sample_ids, or None (missing / bad meta / coverage)."""
+    if not packed_path.exists():
+        return None
+    try:
+        data = torch.load(packed_path, map_location="cpu", weights_only=True, mmap=True)
+    except Exception as e:
+        print(f"Failed to load {packed_path} ({e}). Repacking...")
+        return None
+    meta = data.get("meta")
+    if not isinstance(meta, dict):
+        print(f"{packed_path} has no meta. Repacking...")
+        return None
+    for key, expected in _expected_packed_meta().items():
+        if meta.get(key) != expected:
+            print(f"{packed_path} meta mismatch: {key}={meta.get(key)!r} expected {expected!r}; repacking")
+            return None
+    if data["img"].shape[1] != meta.get("img_dim") or data["src"].shape[1] != meta.get("text_dim"):
+        print(f"{packed_path} table dims do not match meta; repacking")
+        return None
+    id_to_i = {sid: i for i, sid in enumerate(data["sids"])}
+    n_missing = sum(sid not in id_to_i for sid in sample_ids)
+    if n_missing:
+        print(f"{packed_path} missing {n_missing} of {len(sample_ids)} requested samples; repacking")
+        return None
+    idxs = [id_to_i[sid] for sid in sample_ids]
+    return (
+        sample_ids,
+        data["img"][idxs].contiguous(),
+        data["src"][idxs].contiguous(),
+        data["tar"][idxs].contiguous(),
+    )
+
+
+def _save_packed_cache(
+    packed_path: Path,
+    sample_ids: list[str],
+    tables: dict[str, torch.Tensor],
+) -> None:
+    """Atomically write the packed table dict with meta from scattered files."""
+    meta = _expected_packed_meta() | {
+        "source": "scattered",
+        "img_dim": int(tables["img"].shape[1]),
+        "text_dim": int(tables["src"].shape[1]),
+    }
+    packed_path.parent.mkdir(parents=True, exist_ok=True)
+    tmp_path = Path(str(packed_path) + ".tmp")
+    torch.save({"sids": list(sample_ids), **tables, "meta": meta}, tmp_path)
+    tmp_path.replace(packed_path)
+    print(f"Saved packed embeddings: {packed_path}")
+
+
+def _pack_scattered_cache(
+    samples: pd.DataFrame,
+    packed_path: Path,
+) -> tuple[list[str], torch.Tensor, torch.Tensor, torch.Tensor] | None:
+    """Pack scattered per-sample .pt files into packed tables; None if CSV cannot cover.
+
+    Scattered embeddings stay per-sample on disk to best support symlinks between
+    dataset sizes, but loading them is slow, so the packed table is cached. The
+    scattered files are packing-ready (one flat float32 vector per file), so
+    packing is a pure stack.
+    """
+    sample_ids = samples[SAMPLE_ID_COL].tolist()
+    if not sample_ids:
+        raise ValueError("No samples to pack")
+    if EMBEDDINGS_CSV is None or not Path(EMBEDDINGS_CSV).exists():
+        return None
+
+    # Verify the CSV file is valid and matches the expected columns.
+    emb_df = pd.read_csv(EMBEDDINGS_CSV)
+    if emb_df.isna().any().any():
+        raise ValueError(f"Missing values found in {EMBEDDINGS_CSV}")
+    emb_df[SAMPLE_ID_COL] = emb_df[SAMPLE_ID_COL].map(_prep_sample_id)
+    emb_cols = [IMAGE_EMB_COL, SOURCE_EMB_COL, TARGET_EMB_COL]
+    for col in emb_cols:
+        if col not in emb_df.columns:
+            raise ValueError(f"Missing column {col!r} in {EMBEDDINGS_CSV}")
+        emb_df[col] = emb_df[col].map(_prep_embedding_path)
+
+    # Vectorized per-sample path lookup; NaN rows mark ids the CSV does not cover.
+    id_to_row = emb_df.drop_duplicates(SAMPLE_ID_COL).set_index(SAMPLE_ID_COL).reindex(sample_ids)
+    missing = id_to_row.index[id_to_row[emb_cols].isna().any(axis=1)].tolist()
+    if missing:
+        preview = ", ".join(missing[:5])
+        more = f" (+{len(missing) - 5} more)" if len(missing) > 5 else ""
+        print(f"Scattered embeddings missing {len(missing)} sample_id(s): {preview}{more}")
+        return None
+    path_rows = list(id_to_row[emb_cols].itertuples(index=False, name=None))
+
+    # Probe dims from the first sample, then preallocate the packed tables so
+    # peak memory stays ~1x table size (no row lists + torch.stack copy).
+    n = len(sample_ids)
+    img_dim = _load_pt(path_rows[0][0]).numel()
+    text_dim = _text_dim(_load_pt(path_rows[0][1]), path_rows[0][1])
+    img_emb = torch.empty((n, img_dim), dtype=torch.float32)
+    src_emb = torch.empty((n, text_dim), dtype=torch.float32)
+    tar_emb = torch.empty((n, text_dim), dtype=torch.float32)
+
+    def _load_row(i: int):
+        img_p, src_p, tar_p = path_rows[i]
+        return i, _load_pt(img_p), _load_pt(src_p), _load_pt(tar_p)
+
+    def _check(t: torch.Tensor, i: int, kind: str, dim: int) -> torch.Tensor:
+        if t.numel() != dim:
+            raise ValueError(f"{kind} numel {t.numel()} != {dim} for sample {sample_ids[i]}")
+        return t.reshape(-1)
+
+    with ThreadPoolExecutor(max_workers=32) as pool:
+        # Load the embeddings in parallel using a thread pool; rows fill in-place.
+        for i, img_t, src_t, tar_t in tqdm(pool.map(_load_row, range(n)), total=n, desc="Packing embeddings", unit="sample"):
+            img_emb[i] = _check(img_t, i, "image", img_dim)
+            src_emb[i] = _check(src_t, i, "source", text_dim)
+            tar_emb[i] = _check(tar_t, i, "target", text_dim)
+
+    tables = {"img": img_emb, "src": src_emb, "tar": tar_emb}
+    _save_packed_cache(packed_path, sample_ids, tables)
+    return sample_ids, img_emb, src_emb, tar_emb
+
+
+def get_embeddings(
+    samples: pd.DataFrame,
+) -> tuple[list[str], torch.Tensor, torch.Tensor, torch.Tensor]:
+    """Return CPU embedding tables (img, src, tar), packed for training.
+
+    Tries the packed cache, then packs scattered files. Raises if neither covers
+    the requested samples.
+    """
+    packed_path = _get_packed_path()
+    sample_ids = samples[SAMPLE_ID_COL].tolist()
+
+    cached = _load_packed_cache(packed_path, sample_ids)
+    if cached is not None:
+        print("Loaded packed embeddings from cache.")
+        return cached
+
+    packed = _pack_scattered_cache(samples, packed_path)
+    if packed is not None:
+        print("Loaded scattered embeddings from cache.")
+        return packed
+
+    raise RuntimeError(
+        f"Embeddings unavailable: {packed_path} cannot cover {len(sample_ids)} requested "
+        f"samples and scattered embeddings ({EMBEDDINGS_CSV}) are missing or incomplete. "
+        f"Produce scattered embeddings with the annotation pipeline."
+    )
+
+
+def get_embeddings_by_sample(
+    df: pd.DataFrame,
+    device: torch.device | str,
+) -> dict[str, dict[str, torch.Tensor]]:
+    """Embeddings keyed by sample_id, on device."""
+    samples = df.drop_duplicates(subset=SAMPLE_ID_COL).sort_values(SAMPLE_ID_COL)
+    sample_ids, img_emb, src_emb, tar_emb = get_embeddings(samples)
+    img_emb, src_emb, tar_emb = img_emb.to(device), src_emb.to(device), tar_emb.to(device)
+    return {sid:{
+        "img": img_emb[i],
+        "src": src_emb[i],
+        "tar": tar_emb[i]
+        } for i, sid in enumerate(sample_ids)
+    }
