@@ -23,10 +23,10 @@ trainable weights: it reads M's grid and selects the best cell.
 ## Setup
 
 ```bash
-cd models/surrogate_selector
-conda create -n surrogate-selector python=3.12 -y
-conda activate surrogate-selector
-pip install -r requirements.txt
+conda create -n chordedit-models python=3.12 -y
+conda activate chordedit-models
+pip install -r requirements.txt   # from the repo root
+cd models/mlp_predictor
 ```
 
 Training and eval use precomputed embeddings. Paths and model choice come from `settings.json` / `settings.py`.

@@ -1,21 +1,22 @@
+# OS / editors
 .DS_Store
 .vscode/
-__pycache__/
+.idea/
 
-# Checkpoints and ablation outputs
-datasets/
-checkpoints/
-ablation_outputs/
-# Python-generated files
+# Python
+__pycache__/
 *.py[cod]
-__pycache__/
+.ipynb_checkpoints/
 
-# Logs and archives
+# Secrets
+.env
+
+# Tracking and logs
+wandb/
 *.log
-*.tar
-*.zip
 
-# Local/generated ImgEdit artifacts
-imgedit_inspect/
-imgedit_qwen_export/
-imgedit_export/
+# Local data links and weights
+/checkpoints
+/datasets
+/*.pt
+/*.pth

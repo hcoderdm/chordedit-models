@@ -1,17 +1,11 @@
 --extra-index-url https://download.pytorch.org/whl/cu124
 
 torch==2.5.0+cu124
-torchaudio==2.5.0+cu124
-torchvision==0.20.0+cu124
-torchmetrics==1.8.2
-torch-fidelity==0.3.0
-accelerate
-datasets
-diffusers
-gradio
-matplotlib
 numpy
-Pillow
-pyyaml
-seaborn
+pandas
+scipy
+tqdm
+wandb
+python-dotenv
 transformers
+Pillow
