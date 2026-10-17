@@ -43,11 +43,11 @@ python selector.py --run-dir runs/<dataset>/<run>
 
 ## Data
 
-Training reads precomputed embeddings and per-cell metrics from paths under `CHORDEDIT_DATA_ROOT` (`DATASET_DIR` and the PIE-Bench paths), which each `settings.py` reads from a `.env` file beside it. To use a different location, change that variable.
+Training reads precomputed embeddings and per-cell metrics from paths under `CHORDEDIT_DATA_ROOT` (`DATASET_DIR` and the PIE-Bench paths), which each `settings.py` reads from a `.env` file beside it. Copy the model folder's `.env.example` to `.env` and set the paths for your machine.
 
 ## Tracking
 
-`train.py` logs to Weights & Biases via `_wandb.py`. Put `WANDB_API_KEY` in a `.env` file next to `train.py`. It is gitignored and must never be committed. If wandb is unavailable, training continues untracked.
+`train.py` logs to Weights & Biases via `_wandb.py`. Put `WANDB_API_KEY` (and optionally `WANDB_ENTITY`) in the same `.env`. It is gitignored and must never be committed. If wandb is unavailable, training continues untracked.
 
 ## License
 

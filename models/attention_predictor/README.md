@@ -35,7 +35,7 @@ This writes `id_to_selections_<dataset>.csv` (`sample_id`, `t_start`, `t_end`) t
 
 ## Configuration
 
-Every setting lives in `settings.json`, and `settings.py` derives paths and constants from it. A missing key is an error. Data paths (`DATASET_DIR` and the PIE-Bench paths) are built from `CHORDEDIT_DATA_ROOT`, which `settings.py` reads from `.env`.
+Every setting lives in `settings.json`, and `settings.py` derives paths and constants from it. A missing key is an error. Data paths (`DATASET_DIR` and the PIE-Bench paths) are built from `CHORDEDIT_DATA_ROOT`, which `settings.py` reads from `.env` (copy `.env.example`).
 
 ## Files
 
