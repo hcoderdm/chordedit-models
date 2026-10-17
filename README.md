@@ -1,6 +1,9 @@
 # ChordEdit Models
 
-Surrogate models for choosing ChordEdit's editing timesteps. Given an image and a source/target prompt pair, each model predicts the `(psnr, clip)` quality surface over the `(t_start, t_end)` grid, and a selector reads that surface to pick the best cell per sample.
+<!-- > [!NOTE]
+> TBD -->
+
+A collection of models that dynamically choose timesteps for an image editing algorithm. Given an image and a source/target prompt pair, each model predicts the `(psnr, clip)` quality surface over the `(t_start, t_end)` grid, and a selector reads that surface to pick the best cell per sample.
 
 Builds on [ChordEdit](https://chordedit.github.io) ([paper](https://arxiv.org/pdf/2602.19083)). The training data (grid edits, metrics, and embeddings) is produced with the ChordEdit pipeline in the companion `chordedit-grid-optimizations` repo.
 
@@ -8,7 +11,7 @@ Builds on [ChordEdit](https://chordedit.github.io) ([paper](https://arxiv.org/pd
 
 | Path | Model |
 | --- | --- |
-| [`models/attention_predictor/`](models/attention_predictor) | Cross-attention regressor: image (and optional masked-image) tokens are grounded against prompt tokens to predict the whole grid surface. |
+| [`models/attention_predictor/`](models/attention_predictor) | Cross-attention regressor. Image (and optional masked-image) tokens are grounded against prompt tokens to predict the whole grid surface. |
 | [`models/mlp_predictor/`](models/mlp_predictor) | Pooled-feature MLP surrogate with one tower per metric. See its [README](models/mlp_predictor/README.md). |
 | [`models/surrogate_selector/`](models/surrogate_selector) | Earlier M + T surrogate (metric surrogate plus timestep selector). `mlp_predictor` started as a copy of this code. |
 | [`models/cell_classifier/`](models/cell_classifier) | Original classifier over grid cells, with CORAL, CE, and MSE heads. `surrogate_selector` forked from it. |
